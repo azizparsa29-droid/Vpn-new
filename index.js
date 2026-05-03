@@ -3,35 +3,56 @@ const app = express();
 
 app.use(express.json());
 app.use(express.text());
+app.use(express.urlencoded({ extended: true }));
 
-// رله ساده - هر درخواست را به مقصد هدایت می‌کند
-app.all('*', async (req, res) => {
+// رله اصلی - Apps Script به این endpoint درخواست می‌زند
+app.post('/relay', async (req, res) => {
   try {
-    const targetUrl = req.query.url || req.body.url;
+    const { url, method = 'GET', headers = {}, body } = req.body;
     
-    if (!targetUrl) {
-      return res.status(400).send('Missing url parameter');
+    if (!url) {
+      return res.status(400).json({ error: 'Missing url parameter' });
     }
 
+    console.log(`Relaying to: ${url} (${method})`);
+
     const fetchOptions = {
-      method: req.method,
+      method: method,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        ...headers
       }
     };
 
-    // اگر بدنه درخواست وجود داشت، اضافه کن
-    if (req.method !== 'GET' && req.body) {
-      fetchOptions.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    if (body) {
+      fetchOptions.body = body;
     }
 
-    const response = await fetch(targetUrl, fetchOptions);
-    const data = await response.text();
+    const response = await fetch(url, fetchOptions);
+    const responseBody = await response.text();
+    const responseHeaders = {};
     
-    res.status(response.status).send(data);
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+
+    console.log(`Response from ${url}: ${response.status}`);
+
+    res.json({
+      status: response.status,
+      headers: responseHeaders,
+      body: responseBody
+    });
+
   } catch (error) {
-    res.status(500).send('Relay error: ' + error.message);
+    console.error('Relay error:', error);
+    res.status(500).json({ error: error.message });
   }
+});
+
+// مسیر اصلی برای تست
+app.get('/', (req, res) => {
+  res.send('Relay server is running. Use POST /relay endpoint.');
 });
 
 const PORT = process.env.PORT || 3000;
